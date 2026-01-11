@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package quotes;
+
+option go_package = "ft-mt/proto/quotes";
+
+// Сообщение с данными котировки
+message Quote {
+  string symbol = 1;      // Тикер (SBER, BTC, ETH)
+  double price = 2;       // Цена
+  int64 timestamp = 3;    // Unix timestamp в миллисекундах
+}
+
+// Запрос на получение котировок
+message QuoteRequest {
+  repeated string symbols = 1;  // Список тикеров (пусто = все)
+}
+
+// Сервис генерации котировок
+service QuoteService {
+  // Стрим котировок в реальном времени
+  rpc StreamQuotes(QuoteRequest) returns (stream Quote);
+}
