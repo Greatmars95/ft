@@ -1,0 +1,89 @@
+# ============================================
+# Docker Compose — оркестрация микросервисов
+# ============================================
+
+# Версия синтаксиса compose файла
+version: '3.8'
+
+# Определяем сервисы (контейнеры)
+services:
+  # ==========================================
+  # FT — Feed/Ticker сервис
+  # Генерирует котировки, gRPC сервер
+  # ==========================================
+  ft:
+    # Имя контейнера
+    container_name: quotopia-ft
+
+    # Собираем образ из Dockerfile в папке ft/
+    build:
+      context: .           # Корневая папка проекта
+      dockerfile: ft/Dockerfile
+
+    # Пробрасываем порт 50051 (gRPC) на хост
+    # <хост>:<контейнер>
+    ports:
+      - "50051:50051"
+
+    # Подключаем к сети
+    networks:
+      - quotopia-network
+
+    # Перезапускаем при падении
+    restart: unless-stopped
+
+    # Переменные окружения (если понадобятся)
+    environment:
+      - SERVICE_NAME=ft
+
+    # Логи (ограничиваем размер)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # CORE — REST API + gRPC клиент
+  # Получает котировки от FT, отдаёт по HTTP
+  # ==========================================
+  core:
+    container_name: quotopia-core
+
+    build:
+      context: .
+      dockerfile: core/Dockerfile
+
+    # Пробрасываем HTTP порт 8080 на хост
+    ports:
+      - "8080:8080"
+
+    networks:
+      - quotopia-network
+
+    # depends_on — core стартует ПОСЛЕ ft
+    # Но это не гарантирует что FT уже готов принимать соединения
+    # Поэтому в core/main.go мы сделали retry логику
+    depends_on:
+      - ft
+
+    restart: unless-stopped
+
+    environment:
+      - SERVICE_NAME=core
+      # Адрес FT внутри Docker сети
+      # Docker DNS резолвит "ft" в IP контейнера ft
+      - FT_ADDRESS=ft:50051
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ==========================================
+# Сеть для межсервисной коммуникации
+# ==========================================
+networks:
+  quotopia-network:
+    driver: bridge  # Режим bridge — все контейнеры в одной подсети

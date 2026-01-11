@@ -1,2 +1,50 @@
-go1.23.4.linux-amd64.tar.gz
-ft-mt
+# ============================================
+# .gitignore — файлы которые НЕ попадают в git
+# ============================================
+
+# Скомпилированные бинарники Go
+ft/ft
+core/core
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Сгенерированный код из proto файлов
+# Генерируется автоматически при сборке
+*/gen/
+ft/gen/
+core/gen/
+
+# Go модули
+go.sum
+
+# Тестовые бинарники
+*.test
+
+# Профили производительности
+*.out
+*.prof
+
+# IDE и редакторы
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker/
+*.log
+
+# Environment файлы
+.env
+.env.local
+
+# Временные файлы
+tmp/
+temp/
+*.tmp
