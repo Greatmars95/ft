@@ -17,7 +17,8 @@ COPY go.mod go.sum* ./
 RUN go mod download
 
 # Proto файл и генерация
-COPY ../proto/quotes.proto ./proto/
+# context в docker-compose.yml установлен в корень, поэтому путь без ../
+COPY proto/quotes.proto ./proto/
 RUN mkdir -p gen/quotes
 RUN protoc --go_out=./gen/quotes --go_opt=paths=source_relative \
            --go-grpc_out=./gen/quotes --go-grpc_opt=paths=source_relative \

@@ -24,7 +24,8 @@ COPY go.mod go.sum* ./
 RUN go mod download
 
 # Копируем proto файл из корня проекта
-COPY ../proto/quotes.proto ./proto/
+# context в docker-compose.yml установлен в корень, поэтому путь без ../
+COPY proto/quotes.proto ./proto/
 
 # Генерируем Go код из proto файла
 # --go_out = генерируем структуры данных
