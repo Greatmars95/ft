@@ -7,8 +7,10 @@ services:
       POSTGRES_DB: quotopia
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: secret123
-    ports:
-      - "5432:5432"
+    # БЕЗОПАСНОСТЬ: Порт 5432 НЕ открываем наружу!
+    # Только внутри Docker сети quotopia-net
+    # ports:
+    #   - "5432:5432"  # ЗАКОММЕНТИРОВАНО для безопасности
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -24,8 +26,12 @@ services:
   adminer:
     image: adminer:latest
     container_name: quotopia-adminer
-    ports:
-      - "8081:8080"
+    # БЕЗОПАСНОСТЬ: Доступ только через SSH tunnel
+    # Чтобы открыть: ssh -L 8081:localhost:8081 user@server
+    # ports:
+    #   - "8081:8080"  # ЗАКОММЕНТИРОВАНО для безопасности
+    expose:
+      - "8080"  # Доступен только внутри Docker сети
     depends_on:
       - postgres
     networks:
