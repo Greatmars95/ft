@@ -148,26 +148,18 @@ jobs:
         run: |
           echo "================================================"
           echo "🎉 Все тесты прошли успешно!"
-          echo "🚀 Готово к деплою на production"
+          echo "🚀 Начинаем деплой на production..."
           echo "================================================"
-          echo ""
-          echo "Для автоматического деплоя на сервер раскомментируйте"
-          echo "следующий step и добавьте secrets в GitHub:"
-          echo "  - SERVER_HOST: IP или домен вашего сервера"
-          echo "  - SERVER_USER: пользователь для SSH"
-          echo "  - SSH_PRIVATE_KEY: приватный SSH ключ"
 
-      # Раскомментируйте этот блок когда будете готовы к автодеплою:
-      #
-      # - name: 📡 Deploy to server
-      #   uses: appleboy/ssh-action@master
-      #   with:
-      #     host: ${{ secrets.SERVER_HOST }}
-      #     username: ${{ secrets.SERVER_USER }}
-      #     key: ${{ secrets.SSH_PRIVATE_KEY }}
-      #     script: |
-      #       cd ~/ft
-      #       git pull origin main
-      #       docker compose down
-      #       docker compose up --build -d
-      #       echo "✅ Деплой завершён успешно!"
+      - name: 📡 Deploy to server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/ft
+            git pull origin main
+            docker compose down
+            docker compose up --build -d
+            echo "✅ Деплой завершён успешно!"
