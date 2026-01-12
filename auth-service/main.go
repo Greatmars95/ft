@@ -21,12 +21,12 @@ var (
 
 // User модель пользователя
 type User struct {
-	ID           int       `json:"id"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"-"` // Не возвращаем хеш в JSON
-	Role         string    `json:"role"`
-	IsActive     bool      `json:"is_active"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID           int        `json:"id"`
+	Email        string     `json:"email"`
+	PasswordHash string     `json:"-"` // Не возвращаем хеш в JSON
+	Role         string     `json:"role"`
+	IsActive     bool       `json:"is_active"`
+	CreatedAt    time.Time  `json:"created_at"`
 	LastLogin    *time.Time `json:"last_login,omitempty"`
 }
 
