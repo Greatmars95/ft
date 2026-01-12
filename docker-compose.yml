@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  ft:
+    build: .
+    ports:
+      - "50051:50051"
+  ui:
+    build: ./ui
+    ports:
+      - "3001:80"  # 👈 Порт 3001!
