@@ -1,4 +1,4 @@
-module ft/ht
+module ft-mt/ht
 
 go 1.21
 
