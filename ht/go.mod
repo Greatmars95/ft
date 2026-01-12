@@ -5,9 +5,13 @@ go 1.21
 toolchain go1.23.4
 
 require (
+	ft-mt v0.0.0
 	github.com/gin-gonic/gin v1.10.0
-	google.golang.org/grpc v1.65.0
+	google.golang.org/grpc v1.70.0
+	google.golang.org/protobuf v1.36.9
 )
+
+replace ft-mt => ../
 
 require (
 	github.com/bytedance/sonic v1.11.6 // indirect
