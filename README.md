@@ -27,9 +27,10 @@
 
 - **FT (Quote Generator)**: Go + gRPC + Protocol Buffers
 - **HT (HTTP Gateway)**: Go + Gin + gRPC Client
+- **Auth Service**: Go + Gin + JWT + bcrypt
 - **UI**: React 18 + Vite + TailwindCSS
 - **Database**: PostgreSQL 16 + Adminer
-- **Infrastructure**: Docker + Docker Compose + Nginx
+- **Infrastructure**: Docker + Docker Compose + Nginx + Let's Encrypt
 
 ## 🚀 Быстрый старт
 
@@ -46,9 +47,16 @@ docker-compose up --build
 После запуска:
 - UI доступен на `http://localhost:3001`
 - HT API доступен на `http://localhost:8080/quotes`
+- Auth Service на `http://localhost:8090`
 - FT gRPC сервер на `localhost:50051`
 - **Adminer (БД интерфейс)** на `http://localhost:8081`
 - PostgreSQL на `localhost:5432`
+
+### Production (с доменами):
+- `https://quotopia.com` - UI
+- `https://api.quotopia.com` - API
+- `https://auth.quotopia.com` - Auth Service
+- `https://admin.quotopia.com` - Adminer (Basic Auth)
 
 ### Остановка сервисов
 

@@ -39,6 +39,26 @@ services:
     environment:
       ADMINER_DEFAULT_SERVER: postgres
 
+  auth:
+    build: ./auth-service
+    container_name: quotopia-auth
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=admin
+      - DB_PASSWORD=secret123
+      - DB_NAME=quotopia
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      - PORT=8090
+    networks:
+      - quotopia-net
+    restart: unless-stopped
+
   ft:
     build: .
     ports:
@@ -83,8 +103,43 @@ services:
     networks:
       - quotopia-net
 
+  nginx:
+    image: nginx:alpine
+    container_name: quotopia-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+      - ./nginx/ssl:/etc/nginx/ssl
+      - certbot_www:/var/www/certbot:ro
+      - certbot_conf:/etc/letsencrypt:ro
+    depends_on:
+      - ui
+      - ht
+      - auth
+      - adminer
+    networks:
+      - quotopia-net
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: quotopia-certbot
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done;'"
+    networks:
+      - quotopia-net
+
 volumes:
   postgres_data:
+    driver: local
+  certbot_www:
+    driver: local
+  certbot_conf:
     driver: local
 
 networks:
