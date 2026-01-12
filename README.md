@@ -28,6 +28,7 @@
 - **FT (Quote Generator)**: Go + gRPC + Protocol Buffers
 - **HT (HTTP Gateway)**: Go + Gin + gRPC Client
 - **UI**: React 18 + Vite + TailwindCSS
+- **Database**: PostgreSQL 16 + Adminer
 - **Infrastructure**: Docker + Docker Compose + Nginx
 
 ## 🚀 Быстрый старт
@@ -46,6 +47,8 @@ docker-compose up --build
 - UI доступен на `http://localhost:3001`
 - HT API доступен на `http://localhost:8080/quotes`
 - FT gRPC сервер на `localhost:50051`
+- **Adminer (БД интерфейс)** на `http://localhost:8081`
+- PostgreSQL на `localhost:5432`
 
 ### Остановка сервисов
 
@@ -184,7 +187,47 @@ npm run dev
 
 - `3001` - UI (Nginx)
 - `8080` - HT (HTTP Gateway)
+- `8081` - Adminer (Database UI)
+- `5432` - PostgreSQL
 - `50051` - FT (gRPC Server)
+
+## 🗄️ База данных
+
+### Доступ к PostgreSQL
+
+**Через Adminer (веб-интерфейс):**
+```
+URL: http://localhost:8081
+Server: postgres
+Username: admin
+Password: secret123
+Database: quotopia
+```
+
+**Через командную строку:**
+```bash
+# Подключиться к БД
+make db-shell
+
+# Или напрямую
+docker exec -it quotopia-postgres psql -U admin -d quotopia
+```
+
+**Полная документация:** см. [docs/DATABASE.md](docs/DATABASE.md)
+
+### Начальные данные
+
+**Пользователи:**
+- `admin@quotopia.com` / `admin123` (роль: admin)
+- `trader@quotopia.com` / `admin123` (роль: trader)
+- `user@quotopia.com` / `admin123` (роль: user)
+
+**Инструменты:**
+- BTC (Bitcoin) - $95,400
+- ETH (Ethereum) - $2,650
+- SBER (Сбербанк) - ₽275
+- AAPL (Apple) - $185
+- GOOGL (Google) - $142
 
 ## 📌 TODO
 

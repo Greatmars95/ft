@@ -48,6 +48,33 @@ logs:
 restart:
 	docker-compose restart
 
+# Database команды
+db-shell:
+	docker exec -it quotopia-postgres psql -U admin -d quotopia
+
+db-backup:
+	docker exec quotopia-postgres pg_dump -U admin quotopia > backup_$(shell date +%Y%m%d_%H%M%S).sql
+
+db-restore:
+	@echo "Использование: make db-restore FILE=backup.sql"
+	docker exec -i quotopia-postgres psql -U admin quotopia < $(FILE)
+
+db-reset:
+	docker-compose down -v
+	docker-compose up -d postgres
+	@echo "База данных очищена и пересоздана"
+
+# Полезные команды
+ps:
+	docker-compose ps
+
+adminer:
+	@echo "Adminer доступен на: http://localhost:8081"
+	@echo "Server: postgres"
+	@echo "Username: admin"
+	@echo "Password: secret123"
+	@echo "Database: quotopia"
+
 # Справка
 help:
 	@echo "Доступные команды:"

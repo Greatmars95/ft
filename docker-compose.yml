@@ -1,8 +1,51 @@
 services:
+  # PostgreSQL - основная база данных
+  postgres:
+    image: postgres:16-alpine
+    container_name: quotopia-postgres
+    environment:
+      POSTGRES_DB: quotopia
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - quotopia-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d quotopia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Adminer - веб-интерфейс для управления БД
+  adminer:
+    image: adminer:latest
+    container_name: quotopia-adminer
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+    networks:
+      - quotopia-net
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+
   ft:
     build: .
     ports:
       - "50051:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=admin
+      - DB_PASSWORD=secret123
+      - DB_NAME=quotopia
     networks:
       - quotopia-net
 
@@ -14,8 +57,14 @@ services:
       - "8080:8080"
     depends_on:
       - ft
+      - postgres
     environment:
       - GRPC_SERVER=ft:50051
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=admin
+      - DB_PASSWORD=secret123
+      - DB_NAME=quotopia
     networks:
       - quotopia-net
 
@@ -27,6 +76,10 @@ services:
       - ht
     networks:
       - quotopia-net
+
+volumes:
+  postgres_data:
+    driver: local
 
 networks:
   quotopia-net:

@@ -1,2 +1,63 @@
-go1.23.4.linux-amd64.tar.gz
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# Go build cache
+.cache/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Proto generated files
+proto/*.pb.go
+
+# Node modules and build
+node_modules/
+dist/
+build/
+*.log
+
+# Environment variables (НЕ коммитить!)
+.env
+.env.local
+.env.production
+
+# UI specific
+ui/node_modules/
+ui/dist/
+
+# Database
+postgres_data/
+*.sql.backup
+*.db
+
+# Docker
+.docker/
+
+# Go downloads
+go*.tar.gz
 ft-mt
