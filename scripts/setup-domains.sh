@@ -38,9 +38,17 @@ fi
 
 echo "📋 Конфигурация:"
 echo "   Основной домен: $DOMAIN"
-echo "   API домен:      api.$DOMAIN"
-echo "   Auth домен:     auth.$DOMAIN"
-echo "   Admin домен:    admin.$DOMAIN"
+if [[ "$DOMAIN" == *"."* ]]; then
+    # Уже полный домен (quotopia.com)
+    echo "   API домен:      api.$DOMAIN"
+    echo "   Auth домен:     auth.$DOMAIN"
+    echo "   Admin домен:    admin.$DOMAIN"
+else
+    # Короткий домен (ft)
+    echo "   API домен:      api.$DOMAIN"
+    echo "   Auth домен:     auth.$DOMAIN"
+    echo "   Admin домен:    admin.$DOMAIN"
+fi
 echo "   Email:          $CERTBOT_EMAIL"
 echo ""
 
