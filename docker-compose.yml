@@ -4,7 +4,31 @@ services:
     build: .
     ports:
       - "50051:50051"
+    networks:
+      - quotopia-net
+
+  ht:
+    build:
+      context: .
+      dockerfile: ht/Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - ft
+    environment:
+      - GRPC_SERVER=ft:50051
+    networks:
+      - quotopia-net
+
   ui:
     build: ./ui
     ports:
-      - "3001:80"  # 👈 Порт 3001!
+      - "3001:80"
+    depends_on:
+      - ht
+    networks:
+      - quotopia-net
+
+networks:
+  quotopia-net:
+    driver: bridge

@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# Node modules
+ui/node_modules
+ui/dist
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+ft-mt
+ht/ht
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md
+LICENSE
