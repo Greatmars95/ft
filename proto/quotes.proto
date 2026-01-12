@@ -1,7 +1,6 @@
 syntax = "proto3";
 
 package quotes;
-
 option go_package = "ft-mt/proto/quotes";
 
 // Сообщение с данными котировки
@@ -19,5 +18,5 @@ message QuoteRequest {
 // Сервис генерации котировок
 service QuoteService {
   // Стрим котировок в реальном времени
-  rpc StreamQuotes(QuoteRequest) returns (stream Quote);
+  rpc StreamQuotes (QuoteRequest) returns (stream Quote);
 }
