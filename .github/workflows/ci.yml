@@ -26,7 +26,7 @@ jobs:
       - name: 🔧 Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.23'
 
       # Шаг 3: Устанавливаем protoc (для генерации proto файлов)
       - name: 🔨 Install protoc
