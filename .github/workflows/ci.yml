@@ -1,0 +1,173 @@
+name: CI/CD Pipeline
+
+# Когда запускается workflow:
+# - При push в ветки main и develop
+# - При создании pull request в main
+on:
+  push:
+    branches: [main, develop, claude/**]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ============================================
+  # JOB 1: Тестирование и сборка
+  # ============================================
+  test:
+    name: Tests and Build
+    runs-on: ubuntu-latest
+
+    steps:
+      # Шаг 1: Клонируем код из репозитория
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      # Шаг 2: Устанавливаем Go
+      - name: 🔧 Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      # Шаг 3: Устанавливаем protoc (для генерации proto файлов)
+      - name: 🔨 Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      # Шаг 4: Устанавливаем protoc плагины для Go
+      - name: 📦 Install protoc-gen-go plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      # Шаг 5: Генерируем Go код из proto файлов
+      - name: 🔄 Generate proto files
+        run: |
+          protoc \
+            --go_out=. \
+            --go_opt=paths=source_relative \
+            --go-grpc_out=. \
+            --go-grpc_opt=paths=source_relative \
+            proto/quotes.proto
+
+      # Шаг 6: Загружаем зависимости для FT
+      - name: 📦 Download FT dependencies
+        run: go mod download
+
+      # Шаг 7: Загружаем зависимости для HT
+      - name: 📦 Download HT dependencies
+        working-directory: ./ht
+        run: go mod download
+
+      # Шаг 8: Запускаем тесты FT сервиса
+      - name: 🧪 Run FT tests
+        run: go test -v -cover ./...
+
+      # Шаг 9: Запускаем тесты HT сервиса
+      - name: 🧪 Run HT tests
+        working-directory: ./ht
+        run: go test -v -cover ./...
+
+      # Шаг 10: Проверяем форматирование кода FT
+      - name: ✅ Check FT code formatting
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "❌ Код не отформатирован! Запустите: gofmt -w ."
+            gofmt -l .
+            exit 1
+          fi
+          echo "✅ Код отформатирован правильно"
+
+      # Шаг 11: Проверяем форматирование кода HT
+      - name: ✅ Check HT code formatting
+        working-directory: ./ht
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "❌ Код не отформатирован! Запустите: gofmt -w ."
+            gofmt -l .
+            exit 1
+          fi
+          echo "✅ Код отформатирован правильно"
+
+      # Шаг 12: Собираем Docker образы
+      - name: 🐳 Build Docker images
+        run: docker compose build
+
+      # Шаг 13: Запускаем контейнеры для интеграционного теста
+      - name: 🚀 Start services
+        run: docker compose up -d
+
+      # Шаг 14: Ждём, пока сервисы запустятся
+      - name: ⏳ Wait for services to be ready
+        run: |
+          echo "Ожидание запуска HT сервиса..."
+          timeout 30 bash -c 'until curl -f http://localhost:8080/quotes 2>/dev/null; do sleep 2; done' || true
+          sleep 5
+
+      # Шаг 15: Интеграционный тест - проверяем /quotes endpoint
+      - name: 🔍 Integration test - Check /quotes endpoint
+        run: |
+          echo "Тестируем HTTP endpoint..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8080/quotes)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+
+          echo "HTTP код ответа: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "✅ Endpoint /quotes работает корректно!"
+          else
+            echo "❌ Endpoint /quotes вернул код $HTTP_CODE"
+            exit 1
+          fi
+
+      # Шаг 16: Показываем логи если что-то пошло не так
+      - name: 📋 Show logs on failure
+        if: failure()
+        run: |
+          echo "=== FT Logs ==="
+          docker compose logs ft
+          echo "=== HT Logs ==="
+          docker compose logs ht
+
+      # Шаг 17: Останавливаем контейнеры
+      - name: 🛑 Stop services
+        if: always()
+        run: docker compose down
+
+  # ============================================
+  # JOB 2: Автоматический деплой (только для main)
+  # ============================================
+  deploy:
+    name: Deploy to Production
+    needs: test  # Запускается только если test прошёл успешно
+    if: github.ref == 'refs/heads/main'  # Только для ветки main
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚀 Deploy notification
+        run: |
+          echo "================================================"
+          echo "🎉 Все тесты прошли успешно!"
+          echo "🚀 Готово к деплою на production"
+          echo "================================================"
+          echo ""
+          echo "Для автоматического деплоя на сервер раскомментируйте"
+          echo "следующий step и добавьте secrets в GitHub:"
+          echo "  - SERVER_HOST: IP или домен вашего сервера"
+          echo "  - SERVER_USER: пользователь для SSH"
+          echo "  - SSH_PRIVATE_KEY: приватный SSH ключ"
+
+      # Раскомментируйте этот блок когда будете готовы к автодеплою:
+      #
+      # - name: 📡 Deploy to server
+      #   uses: appleboy/ssh-action@master
+      #   with:
+      #     host: ${{ secrets.SERVER_HOST }}
+      #     username: ${{ secrets.SERVER_USER }}
+      #     key: ${{ secrets.SSH_PRIVATE_KEY }}
+      #     script: |
+      #       cd ~/ft
+      #       git pull origin main
+      #       docker compose down
+      #       docker compose up --build -d
+      #       echo "✅ Деплой завершён успешно!"
