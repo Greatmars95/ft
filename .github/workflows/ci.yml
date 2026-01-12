@@ -54,10 +54,12 @@ jobs:
       - name: 📦 Download FT dependencies
         run: go mod download
 
-      # Шаг 7: Загружаем зависимости для HT
+      # Шаг 7: Загружаем зависимости для HT и обновляем go.sum
       - name: 📦 Download HT dependencies
         working-directory: ./ht
-        run: go mod download
+        run: |
+          go mod download
+          go mod tidy
 
       # Шаг 8: Запускаем тесты FT сервиса
       - name: 🧪 Run FT tests
