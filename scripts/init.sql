@@ -49,6 +49,19 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 CREATE INDEX idx_refresh_tokens_token ON refresh_tokens(token);
 CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 
+-- Таблица для blacklist токенов (logout)
+CREATE TABLE IF NOT EXISTS token_blacklist (
+  id SERIAL PRIMARY KEY,
+  token VARCHAR(1000) UNIQUE NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Индекс для быстрой проверки blacklist
+CREATE INDEX idx_token_blacklist_token ON token_blacklist(token);
+CREATE INDEX idx_token_blacklist_expires_at ON token_blacklist(expires_at);
+
 -- Таблица истории изменений инструментов (audit log)
 CREATE TABLE IF NOT EXISTS instruments_audit (
   id SERIAL PRIMARY KEY,

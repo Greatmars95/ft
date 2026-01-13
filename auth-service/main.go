@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"log"
 	"net/http"
 	"os"
@@ -15,9 +17,34 @@ import (
 
 // Конфигурация
 var (
-	jwtSecret = []byte(getEnv("JWT_SECRET", "your-super-secret-jwt-key-change-in-production"))
+	jwtSecret []byte
 	db        *sql.DB
 )
+
+// initJWTSecret инициализация JWT секрета
+func initJWTSecret() {
+	secretStr := os.Getenv("JWT_SECRET")
+
+	if secretStr == "" {
+		log.Println("⚠️  JWT_SECRET не задан!")
+		log.Println("⚠️  Генерируется случайный секрет (токены не будут работать после перезапуска)")
+
+		// Генерируем случайный секрет
+		randomBytes := make([]byte, 32)
+		_, err := rand.Read(randomBytes)
+		if err != nil {
+			log.Fatal("❌ Не удалось сгенерировать случайный секрет:", err)
+		}
+		secretStr = base64.StdEncoding.EncodeToString(randomBytes)
+		log.Printf("💡 Сгенерирован случайный JWT_SECRET. Для production установите переменную окружения JWT_SECRET")
+	} else if secretStr == "your-super-secret-jwt-key-change-in-production" {
+		log.Println("🚨 ВНИМАНИЕ: Используется дефолтный JWT_SECRET!")
+		log.Println("🚨 Это небезопасно для production! Установите уникальный JWT_SECRET")
+	}
+
+	jwtSecret = []byte(secretStr)
+	log.Println("✅ JWT секрет инициализирован")
+}
 
 // User модель пользователя
 type User struct {
@@ -60,6 +87,9 @@ type JWTClaims struct {
 }
 
 func main() {
+	// Инициализация JWT секрета
+	initJWTSecret()
+
 	// Подключение к БД
 	dbHost := getEnv("DB_HOST", "postgres")
 	dbPort := getEnv("DB_PORT", "5432")
@@ -166,8 +196,37 @@ func register(c *gin.Context) {
 	if role == "" {
 		role = "user"
 	}
-	// Только admin может создавать admin
-	// TODO: добавить проверку текущего пользователя
+
+	// Только admin может создавать admin или trader
+	if role == "admin" || role == "trader" {
+		// Проверяем наличие токена авторизации
+		tokenString := c.GetHeader("Authorization")
+		if tokenString == "" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required to create admin or trader"})
+			return
+		}
+
+		// Убираем "Bearer " prefix
+		if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
+			tokenString = tokenString[7:]
+		}
+
+		// Парсим токен
+		token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+			return jwtSecret, nil
+		})
+
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required to create admin or trader"})
+			return
+		}
+
+		claims, ok := token.Claims.(*JWTClaims)
+		if !ok || claims.Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required to create admin or trader"})
+			return
+		}
+	}
 
 	// Создание пользователя
 	var user User
@@ -296,22 +355,195 @@ func getCurrentUser(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+// RefreshTokenRequest запрос на обновление токена
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
 // refreshToken обновить токен
 func refreshToken(c *gin.Context) {
-	// TODO: Реализовать логику refresh token
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented yet"})
+	var req RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Парсинг refresh токена
+	token, err := jwt.ParseWithClaims(req.RefreshToken, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+
+	if err != nil || !token.Valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
+		return
+	}
+
+	claims, ok := token.Claims.(*JWTClaims)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
+		return
+	}
+
+	// Проверка что это именно refresh token
+	if claims.Issuer != "quotopia-auth-refresh" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not a refresh token"})
+		return
+	}
+
+	// Проверка что refresh токен существует в БД
+	var tokenID int
+	var expiresAt time.Time
+	err = db.QueryRow(`
+		SELECT id, expires_at FROM refresh_tokens
+		WHERE token = $1 AND user_id = $2
+	`, req.RefreshToken, claims.UserID).Scan(&tokenID, &expiresAt)
+
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token not found"})
+		return
+	}
+	if err != nil {
+		log.Printf("❌ Ошибка проверки refresh token: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	// Проверка срока действия
+	if time.Now().After(expiresAt) {
+		// Удаляем истекший токен
+		db.Exec("DELETE FROM refresh_tokens WHERE id = $1", tokenID)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token expired"})
+		return
+	}
+
+	// Получаем данные пользователя
+	var user User
+	err = db.QueryRow(`
+		SELECT id, email, role, is_active FROM users WHERE id = $1
+	`, claims.UserID).Scan(&user.ID, &user.Email, &user.Role, &user.IsActive)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "User not found"})
+		return
+	}
+
+	if !user.IsActive {
+		c.JSON(http.StatusForbidden, gin.H{"error": "User is inactive"})
+		return
+	}
+
+	// Генерация нового access токена
+	newToken, newExpiresAt, err := generateToken(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	log.Printf("✅ Токен обновлён для пользователя: %s", user.Email)
+
+	c.JSON(http.StatusOK, gin.H{
+		"token":      newToken,
+		"expires_at": newExpiresAt,
+	})
 }
 
 // logout выход
 func logout(c *gin.Context) {
-	// TODO: Инвалидация токена (добавить в blacklist)
+	// Получаем токен из заголовка
+	tokenString := c.GetHeader("Authorization")
+	if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
+		tokenString = tokenString[7:]
+	}
+
+	userID := c.GetInt("user_id")
+
+	// Парсим токен чтобы получить время истечения
+	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+
+	if err == nil && token.Valid {
+		if claims, ok := token.Claims.(*JWTClaims); ok {
+			// Добавляем токен в blacklist
+			_, err := db.Exec(`
+				INSERT INTO token_blacklist (token, user_id, expires_at)
+				VALUES ($1, $2, $3)
+				ON CONFLICT (token) DO NOTHING
+			`, tokenString, userID, claims.ExpiresAt.Time)
+
+			if err != nil {
+				log.Printf("⚠️ Не удалось добавить токен в blacklist: %v", err)
+			}
+		}
+	}
+
+	// Удаляем все refresh токены пользователя
+	_, err = db.Exec("DELETE FROM refresh_tokens WHERE user_id = $1", userID)
+	if err != nil {
+		log.Printf("⚠️ Не удалось удалить refresh токены: %v", err)
+	}
+
+	log.Printf("✅ Logout для user_id: %d", userID)
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
+}
+
+// ChangePasswordRequest запрос на смену пароля
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
 }
 
 // changePassword смена пароля
 func changePassword(c *gin.Context) {
-	// TODO: Реализовать смену пароля
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented yet"})
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := c.GetInt("user_id")
+
+	// Получаем текущий хеш пароля
+	var currentHash string
+	err := db.QueryRow("SELECT password_hash FROM users WHERE id = $1", userID).Scan(&currentHash)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "User not found"})
+		return
+	}
+
+	// Проверяем старый пароль
+	err = bcrypt.CompareHashAndPassword([]byte(currentHash), []byte(req.OldPassword))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid old password"})
+		return
+	}
+
+	// Проверяем что новый пароль отличается от старого
+	if req.OldPassword == req.NewPassword {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "New password must be different from old password"})
+		return
+	}
+
+	// Хешируем новый пароль
+	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	// Обновляем пароль
+	_, err = db.Exec("UPDATE users SET password_hash = $1 WHERE id = $2", string(newHash), userID)
+	if err != nil {
+		log.Printf("❌ Ошибка обновления пароля: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
+		return
+	}
+
+	// Удаляем все refresh токены пользователя (требуем повторного входа)
+	db.Exec("DELETE FROM refresh_tokens WHERE user_id = $1", userID)
+
+	log.Printf("✅ Пароль изменён для user_id: %d", userID)
+	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
 }
 
 // listUsers список всех пользователей (только admin)
@@ -339,16 +571,92 @@ func listUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, users)
 }
 
+// ChangeRoleRequest запрос на изменение роли
+type ChangeRoleRequest struct {
+	Role string `json:"role" binding:"required"`
+}
+
 // changeUserRole изменить роль пользователя (только admin)
 func changeUserRole(c *gin.Context) {
-	// TODO: Реализовать изменение роли
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented yet"})
+	var req ChangeRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Валидация роли
+	validRoles := map[string]bool{"admin": true, "trader": true, "user": true, "viewer": true}
+	if !validRoles[req.Role] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role. Allowed: admin, trader, user, viewer"})
+		return
+	}
+
+	userID := c.Param("id")
+
+	// Проверяем что пользователь существует
+	var email string
+	var currentRole string
+	err := db.QueryRow("SELECT email, role FROM users WHERE id = $1", userID).Scan(&email, &currentRole)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	// Обновляем роль
+	_, err = db.Exec("UPDATE users SET role = $1 WHERE id = $2", req.Role, userID)
+	if err != nil {
+		log.Printf("❌ Ошибка изменения роли: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update role"})
+		return
+	}
+
+	// Удаляем все refresh токены (требуем повторного входа с новой ролью)
+	db.Exec("DELETE FROM refresh_tokens WHERE user_id = $1", userID)
+
+	log.Printf("✅ Роль изменена: %s (%s -> %s)", email, currentRole, req.Role)
+	c.JSON(http.StatusOK, gin.H{"message": "Role updated successfully", "email": email, "new_role": req.Role})
 }
 
 // deleteUser удалить пользователя (только admin)
 func deleteUser(c *gin.Context) {
-	// TODO: Реализовать удаление пользователя
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Not implemented yet"})
+	userID := c.Param("id")
+	adminID := c.GetInt("user_id")
+
+	// Проверяем что админ не удаляет сам себя
+	if userID == string(rune(adminID)) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot delete your own account"})
+		return
+	}
+
+	// Проверяем что пользователь существует
+	var email string
+	err := db.QueryRow("SELECT email FROM users WHERE id = $1", userID).Scan(&email)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	// Мягкое удаление - деактивируем пользователя
+	_, err = db.Exec("UPDATE users SET is_active = false WHERE id = $1", userID)
+	if err != nil {
+		log.Printf("❌ Ошибка удаления пользователя: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+		return
+	}
+
+	// Удаляем все refresh токены пользователя
+	db.Exec("DELETE FROM refresh_tokens WHERE user_id = $1", userID)
+
+	log.Printf("✅ Пользователь деактивирован: %s (id: %s)", email, userID)
+	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully", "email": email})
 }
 
 // generateToken генерация JWT токена
@@ -391,7 +699,23 @@ func generateRefreshToken(user User) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtSecret)
+	tokenString, err := token.SignedString(jwtSecret)
+	if err != nil {
+		return "", err
+	}
+
+	// Сохраняем refresh токен в БД
+	_, err = db.Exec(`
+		INSERT INTO refresh_tokens (user_id, token, expires_at)
+		VALUES ($1, $2, $3)
+	`, user.ID, tokenString, expiresAt)
+
+	if err != nil {
+		log.Printf("⚠️ Не удалось сохранить refresh token в БД: %v", err)
+		// Не возвращаем ошибку, токен все равно валидный
+	}
+
+	return tokenString, nil
 }
 
 // authMiddleware middleware для проверки JWT
@@ -407,6 +731,15 @@ func authMiddleware() gin.HandlerFunc {
 		// Убрать "Bearer " prefix
 		if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
 			tokenString = tokenString[7:]
+		}
+
+		// Проверка blacklist
+		var isBlacklisted bool
+		err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM token_blacklist WHERE token = $1)", tokenString).Scan(&isBlacklisted)
+		if err == nil && isBlacklisted {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token has been revoked"})
+			c.Abort()
+			return
 		}
 
 		// Парсинг токена
